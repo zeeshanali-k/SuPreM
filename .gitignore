@@ -1,0 +1,8 @@
+__pycache__
+direct_inference/pretrained_checkpoints/.DS_Store
+supervised_pretraining/.DS_Store
+direct_inference/.DS_Store
+direct_inference/pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth
+supervised_pretraining/pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth
+supervised_pretraining/pretrained_weights/.DS_Store
+.DS_Store

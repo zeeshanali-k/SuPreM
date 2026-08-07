@@ -48,7 +48,93 @@ wget --no-check-certificate http://www.cs.jhu.edu/~zongwei/model/swin_unetr_tota
 </details>
 
 
-##### 2 Create environments
+##### 2. Google Colab (Python 3.12)
+
+Start a Colab notebook and select **Runtime > Change runtime type > T4 GPU** (or another NVIDIA GPU). Colab already provides a CUDA-enabled PyTorch and torchvision build; do not replace them with the legacy PyTorch 1.11 packages and do not run the repository's legacy `requirements.txt` in Colab.
+
+Verify the runtime before installing the remaining dependencies:
+
+```python
+import sys
+import torch
+
+print(sys.version)
+print("PyTorch:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none")
+assert torch.cuda.is_available(), "Select a GPU runtime before running inference."
+```
+
+The Python version printed by the current Colab runtime should be Python 3.12.
+
+Install the Python 3.12-compatible dependencies while keeping Colab's PyTorch installation:
+
+```python
+%pip install -q "monai==1.5.2" nibabel h5py connected-components-3d fastremap
+```
+
+Restart the runtime after installation (**Runtime > Restart session**). After reconnecting, mount Google Drive and verify the environment:
+
+```python
+from google.colab import drive
+drive.mount("/content/drive")
+
+import sys
+import torch
+import monai
+
+print("Python:", sys.version)
+print("PyTorch:", torch.__version__)
+print("MONAI:", monai.__version__)
+assert torch.cuda.is_available(), "A CUDA-enabled NVIDIA GPU is required."
+```
+
+Clone the repository and download the vertebrae checkpoint:
+
+```bash
+%cd /content
+!git clone https://github.com/MrGiovanni/SuPreM
+%cd /content/SuPreM/direct_inference/pretrained_checkpoints
+!wget http://www.cs.jhu.edu/~zongwei/model/swin_unetr_totalsegmentator_vertebrae.pth
+%cd /content/SuPreM/direct_inference
+```
+
+As a final import check, run:
+
+```python
+import inference
+print("SuPreM inference imports successfully")
+```
+
+Place the CT data in Google Drive with one directory per case and a `ct.nii.gz` inside each directory:
+
+```text
+/content/drive/MyDrive/AbdomenAtlasDemo/
+├── BDMAP_00000006/
+│   └── ct.nii.gz
+└── BDMAP_00000031/
+    └── ct.nii.gz
+```
+
+Run vertebrae inference with a single-process data loader, which is the most reliable setting in Colab:
+
+```bash
+%cd /content/SuPreM/direct_inference
+!python -W ignore inference.py \
+    --save_dir /content/drive/MyDrive/AbdomenAtlasDemoPredict \
+    --checkpoint ./pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth \
+    --data_root_path /content/drive/MyDrive/AbdomenAtlasDemo \
+    --customize \
+    --num_workers 0 \
+    --device cuda:0
+```
+
+The output directory will contain `combined_labels.nii.gz` and the individual vertebra masks under `segmentations/` for every processed case.
+
+##### 3. Legacy Linux environment (Python 3.9 / MONAI 0.9)
+
+Use this environment on Linux systems where the original Python 3.9 and CUDA 11.3 stack is still available:
+
 ```bash
 conda create -n suprem python=3.9
 source activate suprem
@@ -58,7 +144,7 @@ pip install monai[all]==0.9.0
 pip install -r requirements.txt
 ```
 
-##### 3. Generate vertebrae masks by the AI
+##### 4. Generate vertebrae masks by the AI (legacy environment)
 
 ```bash
 datarootpath=/path/to/your/AbdomenAtlasDemo # NEED MODIFICATION!!!
@@ -104,7 +190,7 @@ AbdomenAtlasDemoPredict
     │       └── vertebrae_C1.nii.gz
 ```
 
-##### 4. [Important!] Postprocess vertebrae masks
+##### 5. [Important!] Postprocess vertebrae masks
 
 Check the AI-predicted vertebrae masks (`combined_labels.nii.gz`) and the original CT scans (`ct.nii.gz`) using software such as [ITK-SNAP](https://www.itksnap.org/pmwiki/pmwiki.php). If you look closely at the AI-predicted masks, you will see many errors. Please design an automatic postprocessing to reduce these errors as many as you can. The postprocessing should be formatted in a separated python file `postprocessing_vertebrae.py`.
 

@@ -1,6 +1,5 @@
 from monai.transforms import (
     AsDiscrete,
-    AddChanneld,
     Compose,
     CropForegroundd,
     LoadImaged,
@@ -19,6 +18,28 @@ from monai.transforms import (
     RandZoomd,
     RandCropByLabelClassesd,
 )
+
+try:
+    # MONAI 1.x replaced AddChanneld with EnsureChannelFirstd. Explicitly
+    # mark NIfTI volumes as channel-less so a singleton channel is added.
+    from monai.transforms import EnsureChannelFirstd
+
+    def _ensure_channel_first(keys):
+        try:
+            return EnsureChannelFirstd(keys=keys, channel_dim="no_channel")
+        except TypeError:
+            # Some MONAI 0.9 patch releases expose EnsureChannelFirstd but do
+            # not yet support the explicit channel_dim argument.
+            from monai.transforms import AddChanneld
+            return AddChanneld(keys=keys)
+
+except ImportError:
+    # Keep the original transform for MONAI 0.9, where EnsureChannelFirstd is
+    # unavailable (or does not yet accept channel_dim).
+    from monai.transforms import AddChanneld
+
+    def _ensure_channel_first(keys):
+        return AddChanneld(keys=keys)
 
 import collections.abc
 import math
@@ -353,7 +374,7 @@ def get_loader(args):
     train_transforms = Compose(
         [
             LoadImageh5d(keys=["image", "label"]), #0
-            AddChanneld(keys=["image", "label"]),
+            _ensure_channel_first(keys=["image", "label"]),
             Orientationd(keys=["image", "label"], axcodes="RAS"),
             Spacingd(
                 keys=["image", "label"],
@@ -408,7 +429,7 @@ def get_loader(args):
         val_transforms = Compose(
             [
                 LoadImaged(keys=["image", "label"]),
-                AddChanneld(keys=["image", "label"]),
+                _ensure_channel_first(keys=["image", "label"]),
                 Orientationd(keys=["image", "label"], axcodes="RAS"),
                 # ToTemplatelabeld(keys=['label']),
                 # RL_Splitd(keys=['label']),
@@ -433,7 +454,7 @@ def get_loader(args):
         val_transforms = Compose(
             [
                 LoadImaged(keys=["image"]),
-                AddChanneld(keys=["image"]),
+                _ensure_channel_first(keys=["image"]),
                 Orientationd(keys=["image"], axcodes="RAS"),
                 # ToTemplatelabeld(keys=['label']),
                 # RL_Splitd(keys=['label']),
@@ -472,7 +493,7 @@ def get_loader(args):
             test_dataset = CacheDataset(data=data_dicts_test, transform=val_transforms, cache_rate=args.cache_rate)
         else:
             test_dataset = Dataset(data=data_dicts_test, transform=val_transforms)
-        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=list_data_collate)
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=args.num_workers, collate_fn=list_data_collate)
         return test_loader, val_transforms
 
 if __name__ == "__main__":

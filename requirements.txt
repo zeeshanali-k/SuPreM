@@ -1,6 +1,6 @@
 connected-components-3d
 h5py==3.6.0
-monai==0.9.0
+monai
 torch==1.11.0
 tqdm
 fastremap
@@ -18,4 +18,4 @@ scipy
 pandas
 glob2
 opencv-python
-pytorch-lightning==1.6.4
+pytorch-lightning==1.6.5

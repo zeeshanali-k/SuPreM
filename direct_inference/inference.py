@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 import numpy as np
 from tqdm import tqdm
 import os
@@ -17,6 +16,51 @@ from utils.utils import organ_post_process, threshold_organ, invert_transform
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
+def _load_trusted_checkpoint(path):
+    """Load a trusted project checkpoint on CPU across supported PyTorch versions."""
+    try:
+        # PyTorch 2.6+ defaults to weights_only=True. These project
+        # checkpoints contain the complete training dictionary, so explicitly
+        # opt into the trusted legacy loader behavior.
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        # PyTorch 1.11 does not have the weights_only keyword.
+        return torch.load(path, map_location="cpu")
+
+
+def _normalize_cuda_device(device_arg):
+    """Return a validated CUDA device from ``--device`` input."""
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is unavailable. SuPreM inference requires an NVIDIA GPU "
+            "with a CUDA-enabled PyTorch runtime."
+        )
+
+    if device_arg is None or str(device_arg).strip() in {"", "cuda"}:
+        device = torch.device("cuda", torch.cuda.current_device())
+    else:
+        value = str(device_arg).strip()
+        if value.isdigit():
+            value = f"cuda:{value}"
+        try:
+            device = torch.device(value)
+        except (RuntimeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid CUDA device {device_arg!r}; use 'cuda', 'cuda:N', or an integer index."
+            ) from exc
+        if device.type != "cuda":
+            raise ValueError(
+                f"Invalid device {device_arg!r}; SuPreM inference requires a CUDA device."
+            )
+
+    if device.index is not None and device.index >= torch.cuda.device_count():
+        raise ValueError(
+            f"CUDA device {device.index} is unavailable; "
+            f"PyTorch reports {torch.cuda.device_count()} device(s)."
+        )
+    return device
+
+
 def validation(model, ValLoader, val_transforms, args):
     save_dir = args.save_dir
     if not os.path.isdir(save_dir):
@@ -28,7 +72,7 @@ def validation(model, ValLoader, val_transforms, args):
             dice_list[key] = np.zeros((2, NUM_CLASS)) # 1st row for dice, 2nd row for count
         for index, batch in enumerate(tqdm(ValLoader)):
             
-            image,name_img = batch["image"].cuda(),batch["name_img"]
+            image,name_img = batch["image"].to(args.device),batch["name_img"]
             image_file_path = os.path.join(args.data_root_path,name_img[0], 'ct.nii.gz')
             case_save_path = os.path.join(save_dir,name_img[0].split('/')[0])
             print(case_save_path)
@@ -46,7 +90,7 @@ def validation(model, ValLoader, val_transforms, args):
             affine_temp = nib.load(image_file_path).affine
             with torch.no_grad():
                 pred = sliding_window_inference(image, (args.roi_x, args.roi_y, args.roi_z), 1, model, overlap=args.overlap, mode='gaussian')
-                pred_sigmoid = F.sigmoid(pred)
+                pred_sigmoid = torch.sigmoid(pred)
             pred_hard = threshold_organ(pred_sigmoid,args)
             pred_hard = pred_hard.cpu()
             torch.cuda.empty_cache()
@@ -107,8 +151,8 @@ def validation(model, ValLoader, val_transforms, args):
             original_affine = nib.load(image_file_path).affine
             with torch.no_grad():
                 # print("Image: {}, shape: {}".format(name[0], image.shape))
-                val_outputs = sliding_window_inference(image, (args.roi_x, args.roi_y, args.roi_z), 1, model, overlap=args.overlap, mode='gaussian', sw_device="cuda", device="cpu")
-                val_outputs = F.softmax(val_outputs, dim=1)
+                val_outputs = sliding_window_inference(image, (args.roi_x, args.roi_y, args.roi_z), 1, model, overlap=args.overlap, mode='gaussian', sw_device=args.device, device="cpu")
+                val_outputs = torch.softmax(val_outputs, dim=1)
                 # print(val_outputs.shape)
                 hard_val_outputs = torch.argmax(val_outputs, dim=1).unsqueeze(1)
                 # print(hard_val_outputs.shape)
@@ -143,7 +187,10 @@ def main():
     parser.add_argument('--dist', dest='dist', action="store_true", default=False,
                         help='distributed training or not')
     parser.add_argument("--local_rank", type=int)
-    parser.add_argument("--device")
+    parser.add_argument(
+        "--device",
+        help="CUDA device to use, for example 'cuda', 'cuda:0', or '0'",
+    )
     parser.add_argument("--epoch", default=0,type = int)
     ## logging
     parser.add_argument('--save_dir', default='...', help='The dataset save path')
@@ -191,6 +238,11 @@ def main():
 
     args = parser.parse_args()
 
+    args.device = _normalize_cuda_device(args.device)
+    # A few legacy utility paths still call .cuda() without an explicit
+    # index. Make those calls target the same selected GPU.
+    torch.cuda.set_device(args.device)
+
     # prepare the 3D model
     
     if args.suprem:
@@ -203,7 +255,7 @@ def main():
         #Load pre-trained weights
         store_dict = model.state_dict()
         store_dict_keys = [key for key, value in store_dict.items()]
-        checkpoint = torch.load(args.checkpoint)
+        checkpoint = _load_trusted_checkpoint(args.checkpoint)
         load_dict = checkpoint['net']
         load_dict_value = [value for key, value in load_dict.items()]
 
@@ -221,7 +273,7 @@ def main():
                     use_checkpoint=False
                     )
         store_dict = model.state_dict()
-        model_dict = torch.load(args.checkpoint)['net']
+        model_dict = _load_trusted_checkpoint(args.checkpoint)['net']
         store_dict = model.state_dict()
         amount = 0
         for key in model_dict.keys():
@@ -233,7 +285,7 @@ def main():
         
     model.load_state_dict(store_dict)
     print('Use pretrained weights')
-    model.cuda()
+    model.to(args.device)
     torch.backends.cudnn.benchmark = True
     test_loader, val_transforms = get_loader(args)
     validation(model, test_loader, val_transforms, args)
