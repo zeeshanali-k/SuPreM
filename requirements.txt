@@ -1,7 +1,8 @@
 connected-components-3d
-h5py==3.6.0
-monai
-torch==1.11.0
+h5py==3.6.0; python_version < "3.10"
+h5py>=3.11.0; python_version >= "3.10"
+monai==0.9.0; python_version < "3.10"
+monai==1.5.2; python_version >= "3.10"
 tqdm
 fastremap
 simpleitk
@@ -18,4 +19,4 @@ scipy
 pandas
 glob2
 opencv-python
-pytorch-lightning==1.6.5
+pytorch-lightning==1.6.5; python_version < "3.10"

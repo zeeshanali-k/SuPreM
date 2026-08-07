@@ -50,7 +50,7 @@ wget --no-check-certificate http://www.cs.jhu.edu/~zongwei/model/swin_unetr_tota
 
 ##### 2. Google Colab (Python 3.12)
 
-Start a Colab notebook and select **Runtime > Change runtime type > T4 GPU** (or another NVIDIA GPU). Colab already provides a CUDA-enabled PyTorch and torchvision build; do not replace them with the legacy PyTorch 1.11 packages and do not run the repository's legacy `requirements.txt` in Colab.
+Start a Colab notebook and select **Runtime > Change runtime type > T4 GPU** (or another NVIDIA GPU). Colab already provides a CUDA-enabled PyTorch and torchvision build; do not replace it with the legacy PyTorch 1.11 packages.
 
 Verify the runtime before installing the remaining dependencies:
 
@@ -67,10 +67,13 @@ assert torch.cuda.is_available(), "Select a GPU runtime before running inference
 
 The Python version printed by the current Colab runtime should be Python 3.12.
 
-Install the Python 3.12-compatible dependencies while keeping Colab's PyTorch installation:
+Clone the repository, then install the Python 3.12-compatible dependencies. The version markers in `requirements.txt` retain Colab's PyTorch while selecting MONAI 1.5.2:
 
 ```python
-%pip install -q "monai==1.5.2" nibabel h5py connected-components-3d fastremap
+%cd /content
+!git clone https://github.com/MrGiovanni/SuPreM
+%cd /content/SuPreM
+%pip install -q -r requirements.txt
 ```
 
 Restart the runtime after installation (**Runtime > Restart session**). After reconnecting, mount Google Drive and verify the environment:
@@ -89,11 +92,9 @@ print("MONAI:", monai.__version__)
 assert torch.cuda.is_available(), "A CUDA-enabled NVIDIA GPU is required."
 ```
 
-Clone the repository and download the vertebrae checkpoint:
+Download the vertebrae checkpoint:
 
 ```bash
-%cd /content
-!git clone https://github.com/MrGiovanni/SuPreM
 %cd /content/SuPreM/direct_inference/pretrained_checkpoints
 !wget http://www.cs.jhu.edu/~zongwei/model/swin_unetr_totalsegmentator_vertebrae.pth
 %cd /content/SuPreM/direct_inference
@@ -116,17 +117,29 @@ Place the CT data in Google Drive with one directory per case and a `ct.nii.gz` 
     └── ct.nii.gz
 ```
 
-Run vertebrae inference with a single-process data loader, which is the most reliable setting in Colab:
+Run vertebrae inference with a single-process data loader, which is the most reliable setting in Colab. Use `subprocess.run` with an argument list so every option always receives exactly one value:
 
-```bash
-%cd /content/SuPreM/direct_inference
-!python -W ignore inference.py \
-    --save_dir /content/drive/MyDrive/AbdomenAtlasDemoPredict \
-    --checkpoint ./pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth \
-    --data_root_path /content/drive/MyDrive/AbdomenAtlasDemo \
-    --customize \
-    --num_workers 0 \
-    --device cuda:0
+```python
+import subprocess
+
+repo_dir = "/content/SuPreM/direct_inference"
+data_root_path = "/content/drive/MyDrive/AbdomenAtlasDemo"
+save_dir = "/content/drive/MyDrive/AbdomenAtlasDemoPredict"
+checkpoint = f"{repo_dir}/pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth"
+
+subprocess.run(
+    [
+        "python", "-W", "ignore", f"{repo_dir}/inference.py",
+        "--save_dir", save_dir,
+        "--checkpoint", checkpoint,
+        "--data_root_path", data_root_path,
+        "--customize",
+        "--num_workers", "0",
+        "--device", "cuda:0",
+    ],
+    cwd=repo_dir,
+    check=True,
+)
 ```
 
 The output directory will contain `combined_labels.nii.gz` and the individual vertebra masks under `segmentations/` for every processed case.
@@ -152,7 +165,7 @@ datarootpath=/path/to/your/AbdomenAtlasDemo # NEED MODIFICATION!!!
 pretrainpath=./pretrained_checkpoints/swin_unetr_totalsegmentator_vertebrae.pth
 savepath=./AbdomenAtlasDemoPredict
 
-python -W ignore inference.py --save_dir $savepath --checkpoint $pretrainpath --data_root_path $datarootpath --customize
+python -W ignore inference.py --save_dir "$savepath" --checkpoint "$pretrainpath" --data_root_path "$datarootpath" --customize
 ```
 
 The vertebrae masks will be saved as
