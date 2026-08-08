@@ -152,9 +152,11 @@ def validation(model, ValLoader, val_transforms, args):
             with torch.no_grad():
                 # print("Image: {}, shape: {}".format(name[0], image.shape))
                 val_outputs = sliding_window_inference(image, (args.roi_x, args.roi_y, args.roi_z), 1, model, overlap=args.overlap, mode='gaussian', sw_device=args.device, device="cpu")
-                val_outputs = torch.softmax(val_outputs, dim=1)
-                # print(val_outputs.shape)
-                hard_val_outputs = torch.argmax(val_outputs, dim=1).unsqueeze(1)
+                # Softmax does not change argmax and would allocate another
+                # full 25-channel volume. Preserve the MetaTensor transform
+                # history while reducing directly to the label map.
+                hard_val_outputs = torch.argmax(val_outputs, dim=1, keepdim=True)
+                del val_outputs
                 # print(hard_val_outputs.shape)
                 # print(np.unique(hard_val_outputs))
  

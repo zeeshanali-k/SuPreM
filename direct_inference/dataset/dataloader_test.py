@@ -447,7 +447,6 @@ def get_loader(args):
                     clip=True,
                 ),
                 CropForegroundd(keys=["image", "label"], source_key="image"),
-                ToTensord(keys=["image", "label"]),
             ]
         )
     else:
@@ -472,7 +471,6 @@ def get_loader(args):
                     clip=True,
                 ),
                 CropForegroundd(keys=["image"], source_key="image"),
-                ToTensord(keys=["image"]),
             ]
     )
     
