@@ -67,13 +67,13 @@ assert torch.cuda.is_available(), "Select a GPU runtime before running inference
 
 The Python version printed by the current Colab runtime should be Python 3.12.
 
-Clone the repository, then install the Python 3.12-compatible dependencies. The version markers in `requirements.txt` retain Colab's PyTorch while selecting MONAI 1.5.2:
+Clone the repository, then install the Python 3.12-compatible inference dependencies. This direct inference workflow does not use `elasticdeform` (it is a compiled training augmentation package and commonly fails to build on Windows):
 
 ```python
 %cd /content
 !git clone https://github.com/MrGiovanni/SuPreM
-%cd /content/SuPreM
-%pip install -q -r requirements.txt
+%cd /content/SuPreM/direct_inference
+%pip install -q -r requirements-inference.txt
 ```
 
 Restart the runtime after installation (**Runtime > Restart session**). After reconnecting, mount Google Drive and verify the environment:
@@ -156,6 +156,8 @@ pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --e
 pip install monai[all]==0.9.0
 pip install -r requirements.txt
 ```
+
+For native Windows inference, install the GPU-enabled PyTorch build first and then install only `requirements-inference.txt`; do not install the full training `requirements.txt` because its `elasticdeform` dependency may require a local C/C++ build and is not needed for `--customize` inference.
 
 ##### 4. Generate vertebrae masks by the AI (legacy environment)
 
